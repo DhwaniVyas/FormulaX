@@ -1,0 +1,471 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Performance & Strategy — FormulaX{% endblock %}
+
+{% block content %}
+<!-- Module Header -->
+<header class="race-header" style="margin-bottom: 1.5rem;">
+  <div class="race-title-row">
+    <div>
+      <h1 class="race-title">Performance &amp; Strategy</h1>
+      <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.95rem;">
+        Comprehensive Head-to-Head Driver Comparison, Team Dynamics, Tyre Degradation &amp; Pit Strategies
+      </p>
+    </div>
+    <div class="race-meta-badges">
+      <span class="race-meta-badge highlight" id="analytics-active-tab-badge">Driver vs Driver</span>
+      <span class="race-meta-badge" id="analytics-year-badge">{{ year|default:"2024" }} Season</span>
+    </div>
+  </div>
+</header>
+
+<!-- Performance & Strategy 5 Tabs Navigation -->
+<div class="race-tabs-nav">
+  <button class="race-tab-btn active" data-tab="tab-driver-comp">1. Driver vs Driver</button>
+  <button class="race-tab-btn" data-tab="tab-team-perf">2. Team Performance</button>
+  <button class="race-tab-btn" data-tab="tab-tyre-strat">3. Tyre Strategy</button>
+  <button class="race-tab-btn" data-tab="tab-pit-strat">4. Pit Strategy</button>
+  <button class="race-tab-btn" data-tab="tab-weather-cond">5. Weather &amp; Conditions</button>
+</div>
+
+<!-- ==================== TAB 1: DRIVER VS DRIVER ==================== -->
+<div id="tab-driver-comp" class="tab-pane active">
+  <div class="race-controls-bar">
+    <div class="control-item">
+      <label for="dcomp-year-select">Season:</label>
+      <select id="dcomp-year-select">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="control-item">
+      <label for="dcomp-d1-select">Driver 1:</label>
+      <select id="dcomp-d1-select" style="min-width: 180px;">
+        <option value="">Loading drivers...</option>
+      </select>
+    </div>
+
+    <span style="font-weight: 700; color: var(--neon-yellow); align-self: center; margin: 0 0.5rem;">VS</span>
+
+    <div class="control-item">
+      <label for="dcomp-d2-select">Driver 2:</label>
+      <select id="dcomp-d2-select" style="min-width: 180px;">
+        <option value="">Loading drivers...</option>
+      </select>
+    </div>
+
+    <button id="dcomp-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+      ⚡ Compare Drivers
+    </button>
+  </div>
+
+  <div id="dcomp-loader" class="loader" style="display: none;"></div>
+  <div id="dcomp-error-box" class="alert-box" style="display: none; background-color: rgba(255, 24, 1, 0.15); border-color: var(--primary-accent); color: #FFCDD2;">
+    <span style="font-size: 1.2rem;">⚠️</span>
+    <span id="dcomp-error-message">Could not fetch comparison data.</span>
+  </div>
+
+  <div id="dcomp-content" style="display: none;">
+    <!-- Head-to-Head Cards Grid -->
+    <div class="grid-2" style="margin-bottom: 2rem;">
+      <!-- Driver 1 Summary -->
+      <div class="card" style="border-top: 4px solid #00D2BE;">
+        <div class="card-header-flex">
+          <h2 id="d1-header-name" style="margin: 0; color: #00D2BE;">Driver 1</h2>
+          <span class="race-meta-badge" id="d1-header-team">Team</span>
+        </div>
+        <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 1rem;">
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Points</div>
+            <div class="metric-card-value" id="d1-stat-points" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Wins</div>
+            <div class="metric-card-value" id="d1-stat-wins" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Podiums</div>
+            <div class="metric-card-value" id="d1-stat-podiums" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Avg Finish</div>
+            <div class="metric-card-value" id="d1-stat-avg" style="font-size: 1.6rem;">0.0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">DNFs</div>
+            <div class="metric-card-value" id="d1-stat-dnfs" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Completed</div>
+            <div class="metric-card-value" id="d1-stat-races" style="font-size: 1.6rem;">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Driver 2 Summary -->
+      <div class="card" style="border-top: 4px solid #FF1801;">
+        <div class="card-header-flex">
+          <h2 id="d2-header-name" style="margin: 0; color: #FF8A80;">Driver 2</h2>
+          <span class="race-meta-badge" id="d2-header-team">Team</span>
+        </div>
+        <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 1rem;">
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Points</div>
+            <div class="metric-card-value" id="d2-stat-points" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Wins</div>
+            <div class="metric-card-value" id="d2-stat-wins" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Podiums</div>
+            <div class="metric-card-value" id="d2-stat-podiums" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Avg Finish</div>
+            <div class="metric-card-value" id="d2-stat-avg" style="font-size: 1.6rem;">0.0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">DNFs</div>
+            <div class="metric-card-value" id="d2-stat-dnfs" style="font-size: 1.6rem;">0</div>
+          </div>
+          <div class="metric-card" style="padding: 0.75rem;">
+            <div class="metric-card-title">Completed</div>
+            <div class="metric-card-value" id="d2-stat-races" style="font-size: 1.6rem;">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparative Visualizations -->
+    <div class="grid-2">
+      <!-- Race Finishing Positions Chart -->
+      <div class="card">
+        <h3>🏁 Race-by-Race Finishing Positions</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Finishing positions (lower is better; P1 is victory).
+        </p>
+        <div class="chart-container" style="height: 320px;">
+          <canvas id="driverFinishesChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Head-to-Head Metrics Comparison Bar Chart -->
+      <div class="card">
+        <h3>⚖️ Head-to-Head Key Statistics</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Side-by-side comparison of points, wins, podiums, and DNFs.
+        </p>
+        <div class="chart-container" style="height: 320px;">
+          <canvas id="driverStatsBarChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB 2: TEAM PERFORMANCE ==================== -->
+<div id="tab-team-perf" class="tab-pane">
+  <div class="race-controls-bar">
+    <div class="control-item">
+      <label for="team-year-select">Season:</label>
+      <select id="team-year-select">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button id="team-load-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+      ⚡ Refresh Constructor Data
+    </button>
+  </div>
+
+  <div id="team-loader" class="loader" style="display: none;"></div>
+
+  <div id="team-content">
+    <div class="grid-2" style="margin-bottom: 2rem;">
+      <!-- Constructor Standings Chart -->
+      <div class="card">
+        <h3>🏆 Constructor Points Ranking</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Total championship points scored per constructor.
+        </p>
+        <div class="chart-container" style="height: 340px;">
+          <canvas id="constructorPointsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Driver Points Contribution Split -->
+      <div class="card">
+        <h3>👥 Driver Points Contribution</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Proportional points contribution by each teammate toward team total.
+        </p>
+        <div id="team-splits-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; max-height: 340px; overflow-y: auto;">
+          <!-- Dynamically populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Constructor Summary Table -->
+    <div class="card">
+      <h3>📋 Constructor Championship Table</h3>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="team-summary-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Pos</th>
+              <th>Constructor</th>
+              <th>Race Victories</th>
+              <th>Teammate Split</th>
+              <th style="text-align: right;">Total Points</th>
+            </tr>
+          </thead>
+          <tbody id="team-summary-tbody">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB 3: TYRE STRATEGY ==================== -->
+<div id="tab-tyre-strat" class="tab-pane">
+  <div class="race-controls-bar">
+    <div class="control-item">
+      <label for="tyre-year-select">Season:</label>
+      <select id="tyre-year-select">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="control-item">
+      <label for="tyre-gp-select">Grand Prix:</label>
+      <select id="tyre-gp-select" style="min-width: 200px;">
+        <option value="">Loading schedule...</option>
+      </select>
+    </div>
+
+    <div class="control-item">
+      <label for="tyre-compound-select">Compound Filter:</label>
+      <select id="tyre-compound-select" style="min-width: 140px;">
+        <option value="all">All Compounds</option>
+        <option value="SOFT">Soft</option>
+        <option value="MEDIUM">Medium</option>
+        <option value="HARD">Hard</option>
+        <option value="INTERMEDIATE">Intermediate</option>
+        <option value="WET">Wet</option>
+      </select>
+    </div>
+
+    <button id="tyre-load-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+      ⚡ Analyze Tyres
+    </button>
+  </div>
+
+  <div id="tyre-loader" class="loader" style="display: none;"></div>
+
+  <div id="tyre-content">
+    <div class="grid-2" style="margin-bottom: 2rem;">
+      <!-- Compound Usage Distribution Pie -->
+      <div class="card">
+        <h3>🍩 Race Tyre Compound Usage</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Total laps completed on each tyre compound across all drivers.
+        </p>
+        <div class="chart-container" style="height: 320px;">
+          <canvas id="tyreUsageChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Tyre Degradation: Lap Time vs Tyre Life -->
+      <div class="card">
+        <h3>📉 Tyre Degradation Curves</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Lap time (s) plotted against Tyre Age (laps on current set). Clean racing laps only.
+        </p>
+        <div class="chart-container" style="height: 320px;">
+          <canvas id="tyreDegradationChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tyre Degradation Disclaimer Alert -->
+    <div class="alert-box" style="background-color: rgba(255, 234, 0, 0.08); border-color: rgba(255, 234, 0, 0.4); color: #FFF9C4; font-size: 0.88rem;">
+      <span>💡 <strong>Tyre Degradation Analysis Note:</strong> In-laps, out-laps, and safety car laps are automatically filtered using FastF1's <code>pick_wo_box()</code> and <code>pick_accurate()</code> methods. Lap times naturally vary with fuel load burnout, track rubbering, and race traffic.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB 4: PIT STRATEGY ==================== -->
+<div id="tab-pit-strat" class="tab-pane">
+  <div class="race-controls-bar">
+    <div class="control-item">
+      <label for="pit-year-select">Season:</label>
+      <select id="pit-year-select">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="control-item">
+      <label for="pit-gp-select">Grand Prix:</label>
+      <select id="pit-gp-select" style="min-width: 220px;">
+        <option value="">Loading schedule...</option>
+      </select>
+    </div>
+
+    <button id="pit-load-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+      ⚡ Analyze Pit Stops
+    </button>
+  </div>
+
+  <div id="pit-loader" class="loader" style="display: none;"></div>
+
+  <div id="pit-content">
+    <!-- Pit Timing Notice -->
+    <div class="alert-box" style="background-color: rgba(255, 255, 255, 0.05); border-color: var(--border-color); color: var(--text-primary); font-size: 0.88rem; margin-bottom: 1.5rem;">
+      <span>⏱️ <strong>Pit Timing Convention:</strong> Duration reflects the pit lane transit interval (in-to-out) recorded by the timing transponder system. Official stationary wheel service time is an FIA internal measurement and is not fabricated here.</span>
+    </div>
+
+    <!-- Stint Sequences Visual Timeline -->
+    <div class="card" style="margin-bottom: 2rem;">
+      <div class="card-header-flex">
+        <h3>🏁 Driver Stint Strategy Timeline</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Compound used per stint &amp; stop laps</span>
+      </div>
+      <div id="pit-stints-timeline-container" style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; max-height: 480px; overflow-y: auto;">
+        <!-- Dynamically rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Pit Events Table -->
+    <div class="card">
+      <h3>📋 Recorded Pit Stop Events</h3>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="pit-events-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Stop #</th>
+              <th>Lap</th>
+              <th>Driver</th>
+              <th>Team</th>
+              <th>Pit In Time</th>
+              <th>Compound Fitted</th>
+              <th style="text-align: right;">Lane Duration</th>
+            </tr>
+          </thead>
+          <tbody id="pit-events-tbody">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB 5: WEATHER & CONDITIONS ==================== -->
+<div id="tab-weather-cond" class="tab-pane">
+  <div class="race-controls-bar">
+    <div class="control-item">
+      <label for="weather-year-select">Season:</label>
+      <select id="weather-year-select">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="control-item">
+      <label for="weather-gp-select">Grand Prix:</label>
+      <select id="weather-gp-select" style="min-width: 220px;">
+        <option value="">Loading schedule...</option>
+      </select>
+    </div>
+
+    <div class="control-item">
+      <label for="weather-session-select">Session:</label>
+      <select id="weather-session-select" style="min-width: 140px;">
+        <option value="Race">Race</option>
+        <option value="Qualifying">Qualifying</option>
+        <option value="Practice 3">Practice 3</option>
+        <option value="Practice 2">Practice 2</option>
+        <option value="Practice 1">Practice 1</option>
+      </select>
+    </div>
+
+    <button id="weather-load-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+      ⚡ Fetch Weather
+    </button>
+  </div>
+
+  <div id="weather-loader" class="loader" style="display: none;"></div>
+
+  <div id="weather-content">
+    <!-- Weather Summary Cards Grid -->
+    <div class="grid-4" style="margin-bottom: 2rem;">
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Air Temperature</span>
+          <span class="metric-card-icon">🌡️</span>
+        </div>
+        <div class="metric-card-value" id="wx-card-air">-- &deg;C</div>
+        <div class="metric-card-sub">Session Average</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Track Temperature</span>
+          <span class="metric-card-icon">🔥</span>
+        </div>
+        <div class="metric-card-value" id="wx-card-track">-- &deg;C</div>
+        <div class="metric-card-sub" id="wx-card-track-sub">Peak: -- &deg;C</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Relative Humidity</span>
+          <span class="metric-card-icon">💧</span>
+        </div>
+        <div class="metric-card-value" id="wx-card-humidity">-- %</div>
+        <div class="metric-card-sub">Atmospheric Moisture</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Rainfall Recorded</span>
+          <span class="metric-card-icon">🌧️</span>
+        </div>
+        <div class="metric-card-value" id="wx-card-rain">No Rain</div>
+        <div class="metric-card-sub" id="wx-card-rain-sub">Dry Session</div>
+      </div>
+    </div>
+
+    <!-- Weather Timeseries Progression Chart -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3>📈 Track &amp; Ambient Temperatures Over Session Time</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Recorded by trackside weather station</span>
+      </div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+        Evolution of track and ambient temperatures. Track rubbering and temperature drops directly influence tyre degradation and grip.
+      </p>
+      <div class="chart-container" style="height: 350px;">
+        <canvas id="weatherTimeseriesChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{% static 'core/js/analytics.js' %}"></script>
+{% endblock %}

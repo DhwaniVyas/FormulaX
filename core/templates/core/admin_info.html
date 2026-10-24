@@ -1,0 +1,19 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Admin Info — FormulaX{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Admin &amp; Cache Management</h2>
+  <p>This is the public-facing informational page for server administrators.</p>
+  <p>
+    All telemetry data management, multi-tier caching, and query monitoring is handled through the secure
+    Django Admin Panel.
+  </p>
+  <div style="margin-top: 1.5rem;">
+    <a href="/admin/" target="_blank" class="btn-primary">
+      🔐 Go to Django Admin Login
+    </a>
+  </div>
+</div>
+{% endblock %}

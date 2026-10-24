@@ -1,0 +1,8 @@
+django
+fastf1
+pandas
+numpy
+plotly
+
+redis
+django-redis

@@ -1,0 +1,352 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Race Center — FormulaX{% endblock %}
+
+{% block content %}
+<!-- Section 1: Race and Session Coordinated Selectors -->
+<div class="race-controls-bar">
+  <div class="control-item">
+    <label for="rc-year-select">Season:</label>
+    <select id="rc-year-select">
+      {% for y in years %}
+      <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="rc-gp-select">Grand Prix:</label>
+    <select id="rc-gp-select" style="min-width: 220px;">
+      <option value="">Loading schedule...</option>
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="rc-session-select">Session:</label>
+    <select id="rc-session-select" style="min-width: 140px;">
+      <option value="Race">Race</option>
+    </select>
+  </div>
+
+  <button id="rc-load-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+    ⚡ Load Session
+  </button>
+</div>
+
+<!-- Loading & Error States -->
+<div id="rc-loader" class="loader" style="display: none;"></div>
+<div id="rc-error-box" class="alert-box" style="display: none; background-color: rgba(255, 24, 1, 0.15); border-color: var(--primary-accent); color: #FFCDD2;">
+  <span style="font-size: 1.2rem;">⚠️</span>
+  <span id="rc-error-message">Failed to load session data.</span>
+</div>
+
+<!-- Race Center Main Content -->
+<div id="rc-main-content" style="display: none;">
+  <!-- Section 2: Race Header -->
+  <header class="race-header">
+    <div class="race-title-row">
+      <div>
+        <h1 class="race-title" id="rc-header-title">Grand Prix Race Data</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.95rem;" id="rc-header-subtitle">
+          Circuit &bull; Round Info
+        </p>
+      </div>
+      <div class="race-meta-badges">
+        <span class="race-meta-badge highlight" id="rc-badge-session">Race</span>
+        <span class="race-meta-badge" id="rc-badge-date">Date</span>
+        <span class="race-meta-badge" id="rc-badge-status">Status</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Section 3: Session Summary Cards -->
+  <section class="grid-4" style="margin-bottom: 2rem;">
+    <!-- Winner / Session Leader -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title" id="summary-leader-title">Session Winner</span>
+        <span class="metric-card-icon">🥇</span>
+      </div>
+      <div class="metric-card-value" id="summary-leader-val">N/A</div>
+      <div class="metric-card-sub" id="summary-leader-sub">Team</div>
+    </div>
+
+    <!-- Fastest Lap -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title">Fastest Lap</span>
+        <span class="metric-card-icon">⚡</span>
+      </div>
+      <div class="metric-card-value" id="summary-fastest-lap-time" style="color: var(--neon-yellow);">--:--.---</div>
+      <div class="metric-card-sub" id="summary-fastest-lap-sub">Driver (Lap --)</div>
+    </div>
+
+    <!-- Classified Finishers -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title">Classified Drivers</span>
+        <span class="metric-card-icon">🏁</span>
+      </div>
+      <div class="metric-card-value" id="summary-classified-val">-- / --</div>
+      <div class="metric-card-sub" id="summary-classified-sub">Classified Finishers</div>
+    </div>
+
+    <!-- Total Laps -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title">Completed Laps</span>
+        <span class="metric-card-icon">🔄</span>
+      </div>
+      <div class="metric-card-value" id="summary-laps-val">-- Laps</div>
+      <div class="metric-card-sub" id="summary-laps-sub">Scheduled Distance</div>
+    </div>
+  </section>
+
+  <!-- Section 4: Race Center Internal Tabs -->
+  <div class="race-tabs-nav">
+    <button class="race-tab-btn active" data-tab="tab-overview">1. Overview</button>
+    <button class="race-tab-btn" data-tab="tab-classification">2. Classification</button>
+    <button class="race-tab-btn" data-tab="tab-laps">3. Lap Analysis</button>
+    <button class="race-tab-btn" data-tab="tab-pitstops">4. Pit Stops</button>
+    <button class="race-tab-btn" data-tab="tab-conditions">5. Conditions</button>
+  </div>
+
+  <!-- TAB 1: OVERVIEW -->
+  <div id="tab-overview" class="tab-pane active">
+    <!-- Podium / Session Leaders -->
+    <div class="card">
+      <h3>🏅 Session Leaders</h3>
+      <div id="overview-podium-container" class="podium-grid"></div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Quick Classification Preview -->
+      <div class="card">
+        <div class="card-header-flex">
+          <h3>Top Finishers Preview</h3>
+          <button class="btn-secondary" style="font-size: 0.85rem; padding: 0.35rem 0.8rem;" onclick="switchTab('tab-classification')">
+            View Full Classification &rarr;
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="leaderboard-table" id="overview-preview-table">
+            <thead>
+              <tr>
+                <th style="width: 45px;">Pos</th>
+                <th>Driver</th>
+                <th>Team</th>
+                <th style="text-align: right;">Status / Gap</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tyre Usage / Compound Strategy Preview -->
+      <div class="card">
+        <h3>🍩 Tyre Strategy Distribution</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Compound usage breakdown across all laps completed in this session.
+        </p>
+        <div class="chart-container" style="height: 280px;">
+          <canvas id="overviewTyreChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: CLASSIFICATION -->
+  <div id="tab-classification" class="tab-pane">
+    <div class="card">
+      <div class="card-header-flex">
+        <h3 id="classification-table-title">Official Session Classification</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);" id="classification-total-badge"></span>
+      </div>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="full-classification-table">
+          <thead id="full-classification-thead"></thead>
+          <tbody id="full-classification-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: LAP ANALYSIS -->
+  <div id="tab-laps" class="tab-pane">
+    <!-- Driver Comparison / Selector Controls -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3>Driver Pace &amp; Lap Progression</h3>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+          <div class="control-item">
+            <label for="lap-driver-1">Primary Driver:</label>
+            <select id="lap-driver-1"></select>
+          </div>
+          <div class="control-item">
+            <label for="lap-driver-2">Compare With:</label>
+            <select id="lap-driver-2">
+              <option value="none">None (Single Driver)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="lap-chart-loader" class="loader" style="display: none; width: 32px; height: 32px;"></div>
+      <div class="chart-container" style="height: 400px;">
+        <canvas id="lapProgressionChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Detailed Lap Timing Table -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3 id="lap-table-title">Lap Timings &amp; Sector Breakdown</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);" id="lap-table-count-badge"></span>
+      </div>
+      <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+        <table class="leaderboard-table" id="driver-laps-detail-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Lap</th>
+              <th>Lap Time</th>
+              <th>Sector 1</th>
+              <th>Sector 2</th>
+              <th>Sector 3</th>
+              <th>Speed Trap</th>
+              <th>Compound</th>
+              <th>Tyre Age</th>
+              <th>Pit Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: PIT STOPS -->
+  <div id="tab-pitstops" class="tab-pane">
+    <div class="alert-box">
+      <span>ℹ️</span>
+      <span>
+        <strong>Notice:</strong> FastF1 pit-in and pit-out timestamps measure total pit-lane transit and duration. They do not represent isolated stationary wheel-change duration.
+      </span>
+    </div>
+
+    <!-- Pit Stops Table -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3>Pit Lane Stops</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);" id="pit-stops-count-badge"></span>
+      </div>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="pit-stops-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Stop</th>
+              <th>Driver</th>
+              <th>Team</th>
+              <th>Lap</th>
+              <th>Compound</th>
+              <th>Tyre Life</th>
+              <th>Pit In Time</th>
+              <th>Pit Out Time</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tyre Stints Breakdown -->
+    <div class="card">
+      <h3>Tyre Stints Breakdown</h3>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="stints-table">
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th>Stint No</th>
+              <th>Compound</th>
+              <th>Start Lap</th>
+              <th>End Lap</th>
+              <th>Total Laps</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: CONDITIONS -->
+  <div id="tab-conditions" class="tab-pane">
+    <div id="conditions-content">
+      <!-- Weather Metric Cards -->
+      <section class="grid-4" style="margin-bottom: 1.5rem;">
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">Air Temperature</span>
+            <span class="metric-card-icon">🌡️</span>
+          </div>
+          <div class="metric-card-value" id="weather-air-temp">-- °C</div>
+          <div class="metric-card-sub">Session Average</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">Track Temperature</span>
+            <span class="metric-card-icon">🛣️</span>
+          </div>
+          <div class="metric-card-value" id="weather-track-temp">-- °C</div>
+          <div class="metric-card-sub" id="weather-track-max">Peak: -- °C</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">Humidity</span>
+            <span class="metric-card-icon">💧</span>
+          </div>
+          <div class="metric-card-value" id="weather-humidity">-- %</div>
+          <div class="metric-card-sub">Relative Humidity</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">Precipitation</span>
+            <span class="metric-card-icon">🌧️</span>
+          </div>
+          <div class="metric-card-value" id="weather-rain">Dry</div>
+          <div class="metric-card-sub" id="weather-wind">Wind: -- m/s</div>
+        </div>
+      </section>
+
+      <!-- Weather Progression Chart -->
+      <div class="card">
+        <h3>Weather Conditions Over Session Timeline</h3>
+        <div class="chart-container" style="height: 350px;">
+          <canvas id="weatherTimelineChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State for Sessions with No Weather Data -->
+    <div id="conditions-empty" class="card empty-state" style="display: none;">
+      <div class="empty-state-icon">⛅</div>
+      <h3>Weather Telemetry Unavailable</h3>
+      <p>Weather condition observations were not supplied by the official timing feed for this session.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const INITIAL_YEAR = "{{ year }}";
+  const INITIAL_GP = "{{ gp|escapejs }}";
+  const INITIAL_SESSION = "{{ session|escapejs }}";
+</script>
+<script src="{% static 'core/js/dashboard.js' %}"></script>
+{% endblock %}

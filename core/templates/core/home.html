@@ -1,0 +1,417 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Home — FormulaX Championship Overview{% endblock %}
+
+{% block content %}
+<!-- Section 2: Hero Section -->
+<section class="hero-section">
+  <video playsinline autoplay muted loop id="bg-video">
+    <source src="{% static 'core/videos/f1bg.mp4' %}" type="video/mp4" />
+  </video>
+  <div class="hero-content">
+    <div class="hero-badge">Formula 1 Analytics Platform</div>
+    <h1>FormulaX</h1>
+    <p class="hero-subtitle">Where Speed Meets Data</p>
+    <p class="hero-desc">
+      Explore championship battles, race results and Formula 1 performance through data-driven insights.
+    </p>
+    <div class="hero-actions">
+      <a
+        href="{% if overview and overview.latest_race %}{% url 'dashboard' %}?year={{ selected_year }}&gp={{ overview.latest_race.EventName|urlencode }}{% else %}{% url 'dashboard' %}{% endif %}"
+        class="btn-primary"
+        id="hero-latest-race-btn"
+      >
+        🏁 Explore Latest Race
+      </a>
+      <a href="{% url 'explorer' %}" class="btn-secondary">
+        📅 Explore Season Calendar
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Section 3: Season Selector & Context Bar -->
+<div class="season-context-bar">
+  <div class="season-selector-wrapper">
+    <label for="home-season-select">Select Season:</label>
+    <select id="home-season-select">
+      {% for y in years %}
+      <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>
+        {{ y }} Season
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="season-meta-info" id="home-season-meta">
+    {% if overview and overview.has_completed_races %}
+      Current standings after the <strong>{{ overview.race_name }}</strong>
+    {% elif overview and not overview.has_completed_races %}
+      <strong>{{ selected_year }} Season:</strong> No completed races yet
+    {% else %}
+      Loading season standings...
+    {% endif %}
+  </div>
+</div>
+
+<div id="home-loader" class="loader" style="display: none;"></div>
+
+<div id="home-main-content">
+  <!-- Section 4: Championship Summary Cards -->
+  <section class="grid-4" style="margin-bottom: 2rem;">
+    <!-- Card 1: Drivers Leader -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title">Drivers' Championship Leader</span>
+        <span class="metric-card-icon">🏆</span>
+      </div>
+      <div class="metric-card-value" id="card-driver-leader-name">
+        {% if overview and overview.driver_leader %}
+          {{ overview.driver_leader.BroadcastName }}
+        {% else %}
+          N/A
+        {% endif %}
+      </div>
+      <div class="metric-card-sub" id="card-driver-leader-sub">
+        {% if overview and overview.driver_leader %}
+          {{ overview.driver_leader.TeamName }} &bull; <strong>{{ overview.driver_leader.Points|floatformat:0 }} PTS</strong>
+        {% else %}
+          Season standings unavailable
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Card 2: Constructors Leader -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title">Constructors' Leader</span>
+        <span class="metric-card-icon">🏢</span>
+      </div>
+      <div class="metric-card-value" id="card-constructor-leader-name">
+        {% if overview and overview.constructor_leader %}
+          {{ overview.constructor_leader.TeamName }}
+        {% else %}
+          N/A
+        {% endif %}
+      </div>
+      <div class="metric-card-sub" id="card-constructor-leader-sub">
+        {% if overview and overview.constructor_leader %}
+          Championship Leader &bull; <strong>{{ overview.constructor_leader.Points|floatformat:0 }} PTS</strong>
+        {% else %}
+          Season standings unavailable
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Card 3: Latest Completed GP -->
+    <div
+      class="metric-card metric-card-link"
+      id="card-latest-gp-link"
+      title="Click to inspect race in Race Center"
+      onclick="navigateToLatestRace()"
+    >
+      <div class="metric-card-header">
+        <span class="metric-card-title">Latest Completed Grand Prix</span>
+        <span class="metric-card-icon">🏁</span>
+      </div>
+      <div class="metric-card-value" id="card-latest-gp-name">
+        {% if overview and overview.latest_race %}
+          {{ overview.latest_race.EventName }}
+        {% else %}
+          None
+        {% endif %}
+      </div>
+      <div class="metric-card-sub" id="card-latest-gp-sub">
+        {% if overview and overview.latest_race and overview.latest_race.Winner %}
+          Winner: <strong>{{ overview.latest_race.Winner.BroadcastName }}</strong> ({{ overview.latest_race.Winner.TeamName }})
+        {% else %}
+          No completed races
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Card 4: Next Scheduled GP -->
+    <div class="metric-card">
+      <div class="metric-card-header">
+        <span class="metric-card-title">Next Scheduled Grand Prix</span>
+        <span class="metric-card-icon">🗓️</span>
+      </div>
+      <div class="metric-card-value" id="card-next-gp-name">
+        {% if overview and overview.next_race %}
+          {{ overview.next_race.EventName }}
+        {% else %}
+          Season Completed
+        {% endif %}
+      </div>
+      <div class="metric-card-sub" id="card-next-gp-sub">
+        {% if overview and overview.next_race %}
+          Round {{ overview.next_race.RoundNumber }} &bull; <strong>{{ overview.next_race.EventDate }}</strong>
+        {% else %}
+          No further races on calendar
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 7: Championship Progression Chart -->
+  <section class="card">
+    <div class="card-header-flex">
+      <div>
+        <h2>📈 Championship Points Progression</h2>
+        <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+          Cumulative points scored round-by-round across completed Grand Prix races.
+        </p>
+      </div>
+      <div class="btn-toggle-group">
+        <button class="btn-toggle active" id="prog-btn-drivers" onclick="switchProgressionView('drivers')">Drivers</button>
+        <button class="btn-toggle" id="prog-btn-constructors" onclick="switchProgressionView('constructors')">Constructors</button>
+      </div>
+    </div>
+    <div class="chart-container">
+      <canvas id="progressionChart"></canvas>
+    </div>
+  </section>
+
+  <!-- Sections 5 & 6: Championship Leaderboards (Side-by-Side on Desktop) -->
+  <section class="grid-2" style="margin-bottom: 2rem;">
+    <!-- Drivers' Standings -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3>🏆 Drivers' Championship</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);" id="drivers-count-badge">
+          {% if overview and overview.driver_standings %}{{ overview.driver_standings|length }} Drivers Classified{% endif %}
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="drivers-standings-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Pos</th>
+              <th>Driver</th>
+              <th>Constructor</th>
+              <th style="width: 60px; text-align: center;">Wins</th>
+              <th style="width: 70px; text-align: right;">Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if overview and overview.driver_standings %}
+              {% for d in overview.driver_standings %}
+              <tr>
+                <td>
+                  <span class="pos-badge {% if d.Position == 1 %}pos-1{% elif d.Position == 2 %}pos-2{% elif d.Position == 3 %}pos-3{% endif %}">
+                    {{ d.Position }}
+                  </span>
+                </td>
+                <td>
+                  <div class="driver-cell">
+                    <span class="driver-abbr">{{ d.Abbreviation }}</span>
+                    <span class="driver-fullname">{{ d.BroadcastName }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="team-pill">
+                    <span class="team-color-dot" data-team="{{ d.TeamName }}"></span>
+                    {{ d.TeamName }}
+                  </span>
+                </td>
+                <td style="text-align: center; color: var(--text-muted);">
+                  {{ d.Wins|default:0 }}
+                </td>
+                <td style="text-align: right;" class="points-val">
+                  {{ d.Points|floatformat:0 }}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                  No driver standings available for this season yet.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Constructors' Standings -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3>🏢 Constructors' Championship</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);" id="constructors-count-badge">
+          {% if overview and overview.constructor_standings %}{{ overview.constructor_standings|length }} Teams{% endif %}
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="constructors-standings-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Pos</th>
+              <th>Constructor</th>
+              <th style="width: 60px; text-align: center;">Wins</th>
+              <th style="width: 70px; text-align: right;">Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if overview and overview.constructor_standings %}
+              {% for c in overview.constructor_standings %}
+              <tr>
+                <td>
+                  <span class="pos-badge {% if c.Position == 1 %}pos-1{% elif c.Position == 2 %}pos-2{% elif c.Position == 3 %}pos-3{% endif %}">
+                    {{ c.Position }}
+                  </span>
+                </td>
+                <td>
+                  <span class="team-pill">
+                    <span class="team-color-dot" data-team="{{ c.TeamName }}"></span>
+                    <strong style="color: #FFFFFF;">{{ c.TeamName }}</strong>
+                  </span>
+                </td>
+                <td style="text-align: center; color: var(--text-muted);">
+                  {{ c.Wins|default:0 }}
+                </td>
+                <td style="text-align: right;" class="points-val">
+                  {{ c.Points|floatformat:0 }}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                  No constructor standings available for this season yet.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Sections 8 & 9: Latest Race & Next Race Spotlights -->
+  <section class="grid-2" style="margin-bottom: 2rem;">
+    <!-- Section 8: Latest Completed Grand Prix Spotlight -->
+    <div class="spotlight-card" id="latest-race-spotlight">
+      <div class="spotlight-header">
+        <div>
+          <span class="spotlight-tag">Latest Completed Event</span>
+          <h3 id="spotlight-latest-name">
+            {% if overview and overview.latest_race %}
+              {{ overview.latest_race.EventName }}
+            {% else %}
+              No Completed Races
+            {% endif %}
+          </h3>
+          <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;" id="spotlight-latest-meta">
+            {% if overview and overview.latest_race %}
+              Round {{ overview.latest_race.RoundNumber }} &bull; {{ overview.latest_race.Country }} &bull; {{ overview.latest_race.EventDate }}
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <div id="spotlight-podium-container">
+        {% if overview and overview.latest_race and overview.latest_race.Podium %}
+        <div class="podium-grid">
+          {% for p in overview.latest_race.Podium %}
+          <div class="podium-box {% if p.Position == 1 %}p1{% endif %}">
+            <div class="p-pos {% if p.Position == 1 %}pos-1{% elif p.Position == 2 %}pos-2{% elif p.Position == 3 %}pos-3{% endif %}" style="display:inline-block; border-radius:50%; width:24px; height:24px; line-height:24px; font-size:0.75rem;">
+              {{ p.Position }}
+            </div>
+            <div class="p-driver">{{ p.BroadcastName }}</div>
+            <div class="p-team">{{ p.TeamName }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <a
+          href="{% if overview and overview.latest_race %}{% url 'dashboard' %}?year={{ selected_year }}&gp={{ overview.latest_race.EventName|urlencode }}{% else %}#{% endif %}"
+          class="btn-primary"
+          id="spotlight-view-race-btn"
+          style="width: 100%; justify-content: center;"
+        >
+          🔍 View Full Race in Race Center
+        </a>
+      </div>
+    </div>
+
+    <!-- Section 9: Next Scheduled Grand Prix Spotlight -->
+    <div class="spotlight-card" id="next-race-spotlight">
+      <div class="spotlight-header">
+        <div>
+          <span class="spotlight-tag" style="background-color: rgba(41, 121, 255, 0.15); color: var(--blue-accent); border-color: var(--blue-accent);">Upcoming Event</span>
+          <h3 id="spotlight-next-name">
+            {% if overview and overview.next_race %}
+              {{ overview.next_race.EventName }}
+            {% else %}
+              Season Complete
+            {% endif %}
+          </h3>
+          <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;" id="spotlight-next-meta">
+            {% if overview and overview.next_race %}
+              Round {{ overview.next_race.RoundNumber }} &bull; {{ overview.next_race.Country }} ({{ overview.next_race.Location }})
+            {% else %}
+              All championship rounds for this season have concluded.
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <div id="spotlight-next-timetable">
+        {% if overview and overview.next_race and overview.next_race.SessionDates %}
+        <ul class="timetable-list">
+          {% for session_name, s_date in overview.next_race.SessionDates.items %}
+          <li class="timetable-row">
+            <span class="timetable-session">{{ session_name }}</span>
+            <span class="timetable-date">{{ s_date }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <p style="color: var(--text-muted); font-size: 0.9rem;" id="spotlight-next-fallback">
+            {% if overview and overview.next_race %}
+              Scheduled for <strong>{{ overview.next_race.EventDate }}</strong>. Detailed session timetable will be released closer to the weekend.
+            {% else %}
+              Check back for next year's provisional calendar.
+            {% endif %}
+          </p>
+        {% endif %}
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <a href="{% url 'explorer' %}" class="btn-secondary" style="width: 100%; justify-content: center;">
+          🗓️ Browse Full Season Calendar
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 10: AI Predictions Preview Placeholder -->
+  <section class="card" style="background-color: rgba(30, 30, 30, 0.6); border: 1px dashed var(--border-color);">
+    <div class="card-header-flex" style="border: none; margin-bottom: 0.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <span style="font-size: 1.5rem;">🤖</span>
+        <div>
+          <h3 style="margin: 0; color: #FFFFFF;">AI Race Predictions &bull; Phase 3 Preview</h3>
+          <span class="badge-soon">In Active Development</span>
+        </div>
+      </div>
+    </div>
+    <p style="margin: 0; color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">
+      Machine learning models for qualifying simulations, podium probabilities, and race strategy predictions are currently in active development for Phase 3. No synthetic or fabricated probabilities are displayed.
+    </p>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Safely inject initial overview data from server context
+  const INITIAL_OVERVIEW = {{ overview|default:"null"|safe }};
+  const SELECTED_YEAR = {{ selected_year }};
+</script>
+<script src="{% static 'core/js/home.js' %}"></script>
+{% endblock %}

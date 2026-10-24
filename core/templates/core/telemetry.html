@@ -1,0 +1,414 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Telemetry & Track Analysis — FormulaX{% endblock %}
+
+{% block content %}
+<!-- Section 1: Telemetry Control & Selection Toolbar -->
+<div class="race-controls-bar">
+  <div class="control-item">
+    <label for="tel-year-select">Season:</label>
+    <select id="tel-year-select">
+      {% for y in years %}
+      <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="tel-gp-select">Grand Prix:</label>
+    <select id="tel-gp-select" style="min-width: 200px;">
+      <option value="">Loading schedule...</option>
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="tel-session-select">Session:</label>
+    <select id="tel-session-select" style="min-width: 120px;">
+      <option value="Race">Race</option>
+      <option value="Qualifying">Qualifying</option>
+      <option value="Practice 3">Practice 3</option>
+      <option value="Practice 2">Practice 2</option>
+      <option value="Practice 1">Practice 1</option>
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="tel-d1-select">Driver A (Primary):</label>
+    <select id="tel-d1-select" style="min-width: 140px;">
+      <option value="">Select session first</option>
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="tel-d2-select">Driver B (Comparison):</label>
+    <select id="tel-d2-select" style="min-width: 140px;">
+      <option value="">Select session first</option>
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="tel-lap1-select">Driver A Lap:</label>
+    <select id="tel-lap1-select" style="min-width: 110px;">
+      <option value="fastest">Fastest</option>
+    </select>
+  </div>
+
+  <div class="control-item">
+    <label for="tel-lap2-select">Driver B Lap:</label>
+    <select id="tel-lap2-select" style="min-width: 110px;">
+      <option value="fastest">Fastest</option>
+    </select>
+  </div>
+
+  <button id="tel-analyze-btn" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+    ⚡ Analyze
+  </button>
+</div>
+
+<!-- Loading & Error States -->
+<div id="tel-loader" class="loader" style="display: none;"></div>
+<div id="tel-error-box" class="alert-box" style="display: none; background-color: rgba(255, 24, 1, 0.15); border-color: var(--primary-accent); color: #FFCDD2;">
+  <span style="font-size: 1.2rem;">⚠️</span>
+  <span id="tel-error-message">Could not load telemetry for the selected parameters.</span>
+</div>
+
+<!-- Telemetry Main Dashboard -->
+<div id="tel-main-content" style="display: none;">
+
+  <!-- Header Banner -->
+  <header class="race-header">
+    <div class="race-title-row">
+      <div>
+        <h1 class="race-title" id="tel-header-title">Telemetry &amp; Track Analysis</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.95rem;" id="tel-header-subtitle">
+          Synchronized Car Dynamics &amp; Track Position
+        </p>
+      </div>
+      <div class="race-meta-badges">
+        <span class="race-meta-badge highlight" id="tel-badge-session">Session</span>
+        <span class="race-meta-badge" id="tel-badge-d1" style="border-color: #00D2BE; color: #00D2BE;">Driver A</span>
+        <span class="race-meta-badge" id="tel-badge-d2" style="border-color: #FF1801; color: #FF8A80;">Driver B</span>
+        <span class="race-meta-badge" id="tel-badge-mode">Full Telemetry</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sign Convention Callout -->
+  <div class="alert-box" style="background-color: rgba(255, 234, 0, 0.08); border-color: rgba(255, 234, 0, 0.4); color: #FFF9C4; margin-bottom: 1.5rem; font-size: 0.88rem;">
+    <span>⏱️ <strong>Delta Sign Convention:</strong> <code>Δ = Driver A Time − Driver B Time</code>. A negative value (<strong><span style="color: #00C853;">− green</span></strong>) indicates Driver A was faster. A positive value (<strong><span style="color: #FF1801;">+ red</span></strong>) indicates Driver B was faster.</span>
+  </div>
+
+  <!-- Telemetry 4 Tabs Navigation -->
+  <div class="race-tabs-nav">
+    <button class="race-tab-btn active" data-tab="tab-lap-comp">1. Lap Comparison</button>
+    <button class="race-tab-btn" data-tab="tab-traces">2. Telemetry Traces</button>
+    <button class="race-tab-btn" data-tab="tab-circuit">3. Circuit Map</button>
+    <button class="race-tab-btn" data-tab="tab-microsectors">4. Micro-sector Analysis</button>
+  </div>
+
+  <!-- TAB 1: LAP COMPARISON -->
+  <div id="tab-lap-comp" class="tab-pane active">
+    <!-- Summary Metrics Grid -->
+    <div class="grid-4" style="margin-bottom: 2rem;">
+      <!-- Overall Lap Time Delta -->
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Lap Time Delta</span>
+          <span class="metric-card-icon">⏱️</span>
+        </div>
+        <div class="metric-card-value" id="card-lap-delta">0.000s</div>
+        <div class="metric-card-sub" id="card-lap-sub">Driver A vs Driver B</div>
+      </div>
+
+      <!-- Sector 1 Delta -->
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Sector 1 Delta</span>
+          <span class="metric-card-icon">⚡</span>
+        </div>
+        <div class="metric-card-value" id="card-s1-delta">0.000s</div>
+        <div class="metric-card-sub" id="card-s1-sub">S1 Comparison</div>
+      </div>
+
+      <!-- Sector 2 Delta -->
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Sector 2 Delta</span>
+          <span class="metric-card-icon">🏎️</span>
+        </div>
+        <div class="metric-card-value" id="card-s2-delta">0.000s</div>
+        <div class="metric-card-sub" id="card-s2-sub">S2 Comparison</div>
+      </div>
+
+      <!-- Sector 3 Delta -->
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="metric-card-title">Sector 3 Delta</span>
+          <span class="metric-card-icon">🏁</span>
+        </div>
+        <div class="metric-card-value" id="card-s3-delta">0.000s</div>
+        <div class="metric-card-sub" id="card-s3-sub">S3 Comparison</div>
+      </div>
+    </div>
+
+    <!-- Comparative Lap Overview Table & Delta Timeline -->
+    <div class="grid-2">
+      <!-- Detailed Times Card -->
+      <div class="card">
+        <h3>📊 Comparative Lap Breakdown</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Official timing sector and speed trap values.
+        </p>
+        <div class="table-responsive">
+          <table class="leaderboard-table" id="lap-comparison-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th id="th-driver-a">Driver A</th>
+                <th id="th-driver-b">Driver B</th>
+                <th style="text-align: right;">Difference</th>
+              </tr>
+            </thead>
+            <tbody id="lap-comparison-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Time Delta Progression Chart -->
+      <div class="card">
+        <h3>📈 Cumulative Lap Time Delta (s)</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Time delta progression across track distance. Below 0 = Driver A gaining time.
+        </p>
+        <div class="chart-container" style="height: 320px;">
+          <canvas id="timeDeltaChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: TELEMETRY TRACES -->
+  <div id="tab-traces" class="tab-pane">
+    <!-- Channel Toggles Toolbar -->
+    <div class="card" style="margin-bottom: 1.5rem; padding: 1rem;">
+      <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;">
+        <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
+          Telemetry Channels:
+        </span>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+            <input type="checkbox" id="chk-speed" checked> Speed (km/h)
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+            <input type="checkbox" id="chk-throttle" checked> Throttle (%) &amp; Brake
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+            <input type="checkbox" id="chk-gear" checked> Gear
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+            <input type="checkbox" id="chk-rpm" checked> Engine RPM
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+            <input type="checkbox" id="chk-drs"> DRS Status
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry Multi-Panel Charts -->
+    <div id="traces-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <!-- Speed Chart -->
+      <div class="card" id="panel-speed">
+        <div class="card-header-flex">
+          <h3 style="font-size: 1rem;">⚡ Speed Trace (km/h)</h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">X-axis: Distance (m)</span>
+        </div>
+        <div class="chart-container" style="height: 240px;">
+          <canvas id="speedTraceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Throttle & Brake Chart -->
+      <div class="card" id="panel-throttle">
+        <div class="card-header-flex">
+          <h3 style="font-size: 1rem;">🏁 Throttle (%) &amp; Brake Application</h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">X-axis: Distance (m)</span>
+        </div>
+        <div class="chart-container" style="height: 200px;">
+          <canvas id="throttleTraceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Gear Selection Chart -->
+      <div class="card" id="panel-gear">
+        <div class="card-header-flex">
+          <h3 style="font-size: 1rem;">⚙️ Gear Selection (1 - 8)</h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Discrete Gear across Distance</span>
+        </div>
+        <div class="chart-container" style="height: 180px;">
+          <canvas id="gearTraceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- RPM Chart -->
+      <div class="card" id="panel-rpm">
+        <div class="card-header-flex">
+          <h3 style="font-size: 1rem;">🔄 Engine RPM</h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Measured Engine Revolutions</span>
+        </div>
+        <div class="chart-container" style="height: 180px;">
+          <canvas id="rpmTraceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- DRS Chart -->
+      <div class="card" id="panel-drs" style="display: none;">
+        <div class="card-header-flex">
+          <h3 style="font-size: 1rem;">💨 DRS State</h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Drag Reduction System Open / Closed</span>
+        </div>
+        <div class="chart-container" style="height: 140px;">
+          <canvas id="drsTraceChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: CIRCUIT MAP -->
+  <div id="tab-circuit" class="tab-pane">
+    <div class="grid-2">
+      <!-- Circuit Map Canvas -->
+      <div class="card">
+        <div class="card-header-flex">
+          <h3>🗺️ 2D Circuit GPS Layout</h3>
+          <div style="font-size: 0.85rem; color: var(--text-muted);" id="circuit-coords-status">
+            Derived from session coordinate telemetry
+          </div>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Hover or slide across distance to inspect position and telemetry at any corner.
+        </p>
+
+        <div style="position: relative; width: 100%; height: 420px; background: #161616; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+          <canvas id="circuitCanvas" width="560" height="420" style="width: 100%; height: 100%;"></canvas>
+          <div id="circuit-fallback-msg" style="display: none; color: var(--text-muted); text-align: center; padding: 2rem;">
+            ⚠️ GPS spatial telemetry coordinates are unavailable for this session upstream. Speed and timing telemetry remain fully available in other tabs.
+          </div>
+        </div>
+
+        <!-- Track Distance Slider -->
+        <div style="margin-top: 1rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+            <span>Start Line (0m)</span>
+            <span id="slider-dist-val" style="color: var(--neon-yellow); font-weight: 600;">Distance: 0m</span>
+            <span id="slider-dist-max">End of Lap</span>
+          </div>
+          <input type="range" id="track-distance-slider" min="0" max="100" value="0" style="width: 100%; cursor: pointer;">
+        </div>
+      </div>
+
+      <!-- Point Inspector Card -->
+      <div class="card">
+        <h3>📍 Track Location Inspector</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+          Dynamic car dynamics at the selected circuit location.
+        </p>
+
+        <div class="stat-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+          <!-- Driver A Point Stats -->
+          <div style="background: rgba(0, 210, 190, 0.05); border: 1px solid rgba(0, 210, 190, 0.3); border-radius: 6px; padding: 1rem;">
+            <h4 id="inspector-d1-title" style="color: #00D2BE; margin-bottom: 0.75rem;">Driver A</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem;">
+              <div>Speed: <strong id="insp-d1-speed" style="color: #FFF;">-- km/h</strong></div>
+              <div>Throttle: <strong id="insp-d1-throttle" style="color: #FFF;">-- %</strong></div>
+              <div>Brake: <strong id="insp-d1-brake" style="color: #FFF;">--</strong></div>
+              <div>Gear: <strong id="insp-d1-gear" style="color: #FFF;">--</strong></div>
+              <div>RPM: <strong id="insp-d1-rpm" style="color: #FFF;">--</strong></div>
+            </div>
+          </div>
+
+          <!-- Driver B Point Stats -->
+          <div style="background: rgba(255, 24, 1, 0.05); border: 1px solid rgba(255, 24, 1, 0.3); border-radius: 6px; padding: 1rem;">
+            <h4 id="inspector-d2-title" style="color: #FF8A80; margin-bottom: 0.75rem;">Driver B</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem;">
+              <div>Speed: <strong id="insp-d2-speed" style="color: #FFF;">-- km/h</strong></div>
+              <div>Throttle: <strong id="insp-d2-throttle" style="color: #FFF;">-- %</strong></div>
+              <div>Brake: <strong id="insp-d2-brake" style="color: #FFF;">--</strong></div>
+              <div>Gear: <strong id="insp-d2-gear" style="color: #FFF;">--</strong></div>
+              <div>RPM: <strong id="insp-d2-rpm" style="color: #FFF;">--</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-card-secondary); border-radius: 6px;">
+          <h4 style="margin-bottom: 0.5rem; font-size: 0.95rem;">Corner Advantage</h4>
+          <p id="insp-advantage-text" style="font-size: 0.9rem; color: var(--text-muted); margin: 0;">
+            Move the slider or hover along the track to inspect speed differentials at corner entries, apexes, and straight line exits.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: MICRO-SECTOR ANALYSIS -->
+  <div id="tab-microsectors" class="tab-pane">
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <h3>⚡ Derived 20-Segment Micro-sector Pace</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.25rem;">
+        Usable lap distance is divided into 20 distance segments to analyze corner and straight performance gains/losses.
+      </p>
+
+      <!-- Visual Micro-sector Strip -->
+      <div style="margin: 1.5rem 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+          <span>Start (Sector 1)</span>
+          <span style="font-weight: 600;">Relative Speed Advantage Strip (20 Segments)</span>
+          <span>Finish (Sector 3)</span>
+        </div>
+        <div id="microsector-strip" style="display: grid; grid-template-columns: repeat(20, 1fr); height: 28px; border-radius: 4px; overflow: hidden; gap: 2px; background: #111;">
+          <!-- 20 segments rendered via JS -->
+        </div>
+        <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 0.75rem; font-size: 0.82rem; color: var(--text-muted);">
+          <span><span style="display: inline-block; width: 12px; height: 12px; background: #00C853; border-radius: 2px; margin-right: 4px; vertical-align: middle;"></span> Driver A Advantage (+5 km/h)</span>
+          <span><span style="display: inline-block; width: 12px; height: 12px; background: #555555; border-radius: 2px; margin-right: 4px; vertical-align: middle;"></span> Even Pace (&plusmn;5 km/h)</span>
+          <span><span style="display: inline-block; width: 12px; height: 12px; background: #FF1801; border-radius: 2px; margin-right: 4px; vertical-align: middle;"></span> Driver B Advantage (+5 km/h)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Micro-sectors Data Table -->
+    <div class="card">
+      <div class="card-header-flex">
+        <h3>📋 Segment Pace Breakdown Table</h3>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Delta = Driver A Speed − Driver B Speed</span>
+      </div>
+      <div class="table-responsive">
+        <table class="leaderboard-table" id="microsector-table">
+          <thead>
+            <tr>
+              <th style="width: 60px;">Seg #</th>
+              <th>Distance Window (m)</th>
+              <th id="th-ms-d1">Driver A Avg Speed</th>
+              <th id="th-ms-d2">Driver B Avg Speed</th>
+              <th>Speed Delta</th>
+              <th style="text-align: right;">Advantage</th>
+            </tr>
+          </thead>
+          <tbody id="microsector-tbody">
+            <!-- Rendered via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{% static 'core/js/telemetry.js' %}"></script>
+{% endblock %}

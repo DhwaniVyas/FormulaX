@@ -1,0 +1,157 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Season Explorer — FormulaX{% endblock %}
+
+{% block content %}
+<!-- Section 1: Season Overview Header & Summary Cards -->
+<header class="race-header" style="margin-bottom: 1.5rem;">
+  <div class="race-title-row">
+    <div>
+      <h1 class="race-title">Season Explorer</h1>
+      <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.95rem;">
+        FIA Formula One World Championship Schedule, Event Archive &amp; Cross-Module Launchpad
+      </p>
+    </div>
+    <div class="race-meta-badges">
+      <span class="race-meta-badge highlight" id="explorer-status-badge">In Progress</span>
+      <span class="race-meta-badge" id="explorer-year-badge">{{ selected_year|default:"2024" }} Season</span>
+    </div>
+  </div>
+</header>
+
+<!-- Season Summary Metrics -->
+<div class="grid-4" style="margin-bottom: 2rem;">
+  <div class="metric-card">
+    <div class="metric-card-header">
+      <span class="metric-card-title">Scheduled Rounds</span>
+      <span class="metric-card-icon">🏁</span>
+    </div>
+    <div class="metric-card-value" id="stat-total-rounds">--</div>
+    <div class="metric-card-sub" id="stat-season-sub">Official Grand Prix Events</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-card-header">
+      <span class="metric-card-title">Completed Races</span>
+      <span class="metric-card-icon">✅</span>
+    </div>
+    <div class="metric-card-value" id="stat-completed-rounds" style="color: #00C853;">--</div>
+    <div class="metric-card-sub" id="stat-completed-pct">--% of Season</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-card-header">
+      <span class="metric-card-title">Latest Grand Prix</span>
+      <span class="metric-card-icon">🏆</span>
+    </div>
+    <div class="metric-card-value" id="stat-latest-gp" style="font-size: 1.3rem;">--</div>
+    <div class="metric-card-sub" id="stat-latest-winner">Winner: --</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-card-header">
+      <span class="metric-card-title">Next Grand Prix</span>
+      <span class="metric-card-icon">🗓️</span>
+    </div>
+    <div class="metric-card-value" id="stat-next-gp" style="font-size: 1.3rem; color: var(--neon-yellow);">--</div>
+    <div class="metric-card-sub" id="stat-next-date">Scheduled: --</div>
+  </div>
+</div>
+
+<!-- Section 2 & 3: Calendar Toolbar, Filters, Search & View Modes -->
+<div class="race-controls-bar" style="margin-bottom: 1.5rem; justify-content: space-between;">
+  <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+    <div class="control-item">
+      <label for="explorer-year-select">Season:</label>
+      <select id="explorer-year-select">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Filter Buttons -->
+    <div class="explorer-filter-group" style="display: flex; gap: 0.4rem; background: var(--bg-card-secondary); padding: 0.3rem; border-radius: 6px; border: 1px solid var(--border-color);">
+      <button class="filter-btn active" data-filter="all">All Events</button>
+      <button class="filter-btn" data-filter="completed">Completed</button>
+      <button class="filter-btn" data-filter="upcoming">Upcoming</button>
+    </div>
+
+    <!-- Search Box -->
+    <div style="position: relative; min-width: 220px;">
+      <input type="text" id="explorer-search" placeholder="🔍 Search Grand Prix or Country..." style="width: 100%; padding: 0.6rem 0.8rem; background: var(--bg-card-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.88rem;">
+    </div>
+  </div>
+
+  <!-- View Mode Switcher -->
+  <div style="display: flex; gap: 0.4rem; background: var(--bg-card-secondary); padding: 0.3rem; border-radius: 6px; border: 1px solid var(--border-color);">
+    <button class="view-mode-btn active" id="btn-view-grid" title="Card Grid View">🔲 Grid</button>
+    <button class="view-mode-btn" id="btn-view-list" title="Compact List View">☰ List</button>
+  </div>
+</div>
+
+<!-- Loader & State Messages -->
+<div id="explorer-loader" class="loader" style="display: none;"></div>
+<div id="explorer-empty-msg" class="alert-box" style="display: none; background: rgba(255, 255, 255, 0.05); color: var(--text-muted); text-align: center; justify-content: center;">
+  No Grand Prix events matched your search or filter.
+</div>
+
+<!-- Calendar Cards Container (Grid / List) -->
+<div id="explorer-events-container" class="explorer-grid">
+  <!-- Dynamically populated via JS -->
+</div>
+
+<!-- Section 4: Event Details Modal -->
+<div id="event-modal-backdrop" class="modal-backdrop" style="display: none;">
+  <div class="modal-content card" style="max-width: 680px; width: 90%; border-top: 4px solid var(--primary-accent); position: relative; max-height: 85vh; overflow-y: auto;">
+    <button id="modal-close-btn" class="modal-close" style="position: absolute; top: 1rem; right: 1.25rem; background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer;">&times;</button>
+
+    <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+      <span class="race-meta-badge highlight" id="modal-round-badge">Round 1</span>
+      <span class="race-meta-badge" id="modal-status-badge">Completed</span>
+    </div>
+
+    <h2 id="modal-event-name" style="margin: 0 0 0.25rem 0;">Grand Prix Name</h2>
+    <p id="modal-location-text" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+      Circuit &bull; Country &bull; Date
+    </p>
+
+    <!-- Winner & Podium Card (if completed) -->
+    <div id="modal-result-card" class="card" style="background: var(--bg-card-secondary); margin-bottom: 1.5rem; display: none;">
+      <h3 style="margin-bottom: 0.5rem; font-size: 1rem;">🏆 Race Winner &amp; Podium</h3>
+      <div id="modal-podium-content" style="display: flex; gap: 1rem; align-items: center;">
+        <!-- Filled via JS -->
+      </div>
+    </div>
+
+    <!-- Available Weekend Sessions -->
+    <div style="margin-bottom: 1.5rem;">
+      <h3 style="margin-bottom: 0.5rem; font-size: 1rem;">🗓️ Weekend Timetable &amp; Sessions</h3>
+      <div id="modal-sessions-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        <!-- Sessions badges -->
+      </div>
+    </div>
+
+    <!-- Cross-Module Action Buttons -->
+    <div style="border-top: 1px solid var(--border-color); padding-top: 1.25rem; margin-top: 1rem;">
+      <h4 style="margin-bottom: 0.75rem; font-size: 0.95rem; color: var(--text-muted);">Launch Analytical Modules:</h4>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+        <a id="btn-open-racecenter" href="#" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+          🏎️ Open in Race Center
+        </a>
+        <a id="btn-open-telemetry" href="#" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+          ⚡ Open in Telemetry &amp; Track
+        </a>
+        <a id="btn-open-strategy" href="#" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+          📊 Open in Performance &amp; Strategy
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'core/js/explorer.js' %}"></script>
+{% endblock %}

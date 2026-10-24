@@ -1,0 +1,89 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}FormulaX — Formula 1 Analytics{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'core/css/style.css' %}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <header class="navbar">
+      <div class="nav-container">
+        <a href="{% url 'home' %}" class="nav-logo">
+          <span class="logo-accent">🏎️</span> FormulaX
+        </a>
+
+        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <nav class="nav-wrapper" id="nav-wrapper">
+          <ul class="nav-menu">
+            <li class="nav-item">
+              <a href="{% url 'home' %}" class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}">Home</a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Race Center</a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'telemetry' %}" class="nav-link {% if request.resolver_match.url_name == 'telemetry' %}active{% endif %}">Telemetry &amp; Track</a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'analytics' %}" class="nav-link {% if request.resolver_match.url_name == 'analytics' %}active{% endif %}">Performance &amp; Strategy</a>
+            </li>
+            <li class="nav-item">
+              <a href="#predictions" class="nav-link nav-link-disabled" title="AI Race Predictions (Phase 3)">AI Predictions <span class="badge-soon">Soon</span></a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'explorer' %}" class="nav-link {% if request.resolver_match.url_name == 'explorer' %}active{% endif %}">Season Explorer</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main-content">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+      <div class="footer-container">
+        <p>&copy; {% now "Y" %} <strong>FormulaX</strong>. Where Speed Meets Data. Powered by FastF1.</p>
+        <div class="footer-links">
+          <a href="{% url 'home' %}">Home</a>
+          <span>&bull;</span>
+          <a href="{% url 'dashboard' %}">Race Center</a>
+          <span>&bull;</span>
+          <a href="{% url 'telemetry' %}">Telemetry &amp; Track</a>
+          <span>&bull;</span>
+          <a href="{% url 'analytics' %}">Performance &amp; Strategy</a>
+          <span>&bull;</span>
+          <a href="{% url 'explorer' %}">Season Explorer</a>
+          <span>&bull;</span>
+          <a href="{% url 'admin_info' %}">Cache Admin</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Global navigation responsive toggle
+      document.addEventListener('DOMContentLoaded', () => {
+        const toggle = document.getElementById('nav-toggle');
+        const wrapper = document.getElementById('nav-wrapper');
+        if (toggle && wrapper) {
+          toggle.addEventListener('click', () => {
+            wrapper.classList.toggle('nav-open');
+            toggle.classList.toggle('is-active');
+          });
+        }
+      });
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
