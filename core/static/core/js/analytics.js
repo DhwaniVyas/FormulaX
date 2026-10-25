@@ -619,7 +619,8 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.style.display = 'flex';
         bar.style.background = '#222';
 
-        dStint.stints.forEach(st => {
+        const stintsList = Array.isArray(dStint.stints) ? dStint.stints : [];
+        stintsList.forEach(st => {
           const lapsCount = (st.end_lap - st.start_lap + 1) || 1;
           const pct = Math.min(100, Math.max(2, (lapsCount / totalLaps) * 100));
           const compColor = TYRE_COLORS[(st.compound || '').toUpperCase()] || '#888';

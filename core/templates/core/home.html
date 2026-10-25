@@ -408,10 +408,9 @@
 {% endblock %}
 
 {% block scripts %}
+{{ overview|json_script:"initial-overview-data" }}
 <script>
-  // Safely inject initial overview data from server context
-  const INITIAL_OVERVIEW = {{ overview|default:"null"|safe }};
   const SELECTED_YEAR = {{ selected_year }};
 </script>
-<script src="{% static 'core/js/home.js' %}"></script>
+<script src="{% static 'core/js/home.js' %}?v=2"></script>
 {% endblock %}

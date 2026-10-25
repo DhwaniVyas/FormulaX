@@ -269,3 +269,53 @@ class TestDataCacheAndApiEndpoints(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['EventName'], 'Test Grand Prix')
 
+
+class TestDeploymentAndEdgeCases(TestCase):
+    def setUp(self):
+        self.client = Client()
+        cache.clear()
+
+    def test_home_view_cold_start_empty_cache(self):
+        """Home page should render reliably with HTTP 200 even when DataCache is totally empty."""
+        DataCache.objects.all().delete()
+        response = self.client.get(reverse('home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'core/home.html')
+        self.assertIn('years', response.context)
+        self.assertIn('selected_year', response.context)
+
+    def test_home_view_invalid_year_handled(self):
+        """Invalid year parameters should fall back safely without error."""
+        response = self.client.get(reverse('home') + '?year=invalid_string')
+        self.assertEqual(response.status_code, 200)
+
+    def test_api_empty_schedule_returns_empty_list(self):
+        """API get_schedule should return an empty list rather than null when empty."""
+        response = self.client.get('/api/schedule/1950/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)
+
+    def test_api_empty_drivers_returns_empty_list(self):
+        """API get_drivers should return an empty list rather than null when empty."""
+        response = self.client.get('/api/drivers/1950/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)
+
+    def test_api_empty_calendar_returns_empty_list(self):
+        """API season_calendar should return an empty list rather than 404 when empty."""
+        response = self.client.get('/api/season_calendar/1950/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)
+
+    def test_render_production_settings(self):
+        """Verify settings required for Render deployment."""
+        from django.conf import settings
+        self.assertIn(".onrender.com", settings.ALLOWED_HOSTS)
+        self.assertTrue(any(".onrender.com" in orig for orig in settings.CSRF_TRUSTED_ORIGINS))
+        self.assertEqual(
+            settings.STORAGES['staticfiles']['BACKEND'],
+            'whitenoise.storage.CompressedStaticFilesStorage'
+        )
+        self.assertFalse(settings.WHITENOISE_MANIFEST_STRICT)
+
+

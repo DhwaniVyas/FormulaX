@@ -33,6 +33,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentSearchQuery = '';
   let currentViewMode = 'grid'; // 'grid' or 'list'
 
+  function formatWinnerName(w) {
+    if (!w) return null;
+    if (typeof w === 'string') return w;
+    return w.BroadcastName || w.name || w.driver || null;
+  }
+
   // --- Load Season Calendar ---
   async function loadSeasonCalendar(year) {
     loader.style.display = 'block';
@@ -54,6 +60,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       loader.style.display = 'none';
     }
+  }
+
+  function formatWinnerName(w) {
+    if (!w) return null;
+    if (typeof w === 'string') return w;
+    return w.name || w.BroadcastName || w.driver || null;
   }
 
   // --- Summary Metrics ---
@@ -82,12 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
       statusBadge.textContent = 'Upcoming Season';
       statusBadge.style.background = 'rgba(255, 255, 255, 0.1)';
       statusBadge.style.color = '#E0E0E0';
-    }
-
-    function formatWinnerName(w) {
-      if (!w) return null;
-      if (typeof w === 'string') return w;
-      return w.name || w.BroadcastName || w.driver || null;
     }
 
     // Latest GP

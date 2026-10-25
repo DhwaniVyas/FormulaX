@@ -26,26 +26,39 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "[::1]",
     "testserver",
+    ".onrender.com",
 ]
 
 render_hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-if render_hostname:
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_hostname)
+
+allowed_hosts_env = os.environ.get("ALLOWED_HOSTS")
+if allowed_hosts_env:
+    for host in allowed_hosts_env.split(","):
+        h = host.strip()
+        if h and h not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(h)
+
+# CSRF Trusted Origins for Render & Production
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.onrender.com",
+]
+if render_hostname:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{render_hostname}")
+
+csrf_env = os.environ.get("CSRF_TRUSTED_ORIGINS")
+if csrf_env:
+    for origin in csrf_env.split(","):
+        o = origin.strip()
+        if o and o not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(o)
+
+# Trust reverse-proxy SSL header from Render
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-# # Quick-start development settings - unsuitable for production
-# # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# # SECURITY WARNING: keep the secret key used in production secret!
-# SECRET_KEY = 'django-insecure-4c8i1sswfr$0su$i@ic4dbmlpj#-oh^0i6g%^12ywh#urkb8&)'
-
-# # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = True
-
-# ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'testserver']
 
 
 # Application definition
@@ -97,13 +110,22 @@ WSGI_APPLICATION = 'fxpro.wsgi.application'
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
-    }
+    try:
+        DATABASES = {
+            "default": dj_database_url.config(
+                default=DATABASE_URL,
+                conn_max_age=600,
+                conn_health_checks=True,
+            )
+        }
+    except Exception as e:
+        print(f"Warning: Could not configure DATABASE_URL: {e}. Falling back to SQLite.")
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": BASE_DIR / "db.sqlite3",
+            }
+        }
 else:
     DATABASES = {
         "default": {
@@ -115,16 +137,27 @@ else:
 REDIS_URL = os.environ.get("REDIS_URL")
 
 if REDIS_URL:
-    CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": REDIS_URL,
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            },
-            "TIMEOUT": 300,
+    try:
+        import django_redis  # noqa: F401
+        CACHES = {
+            "default": {
+                "BACKEND": "django_redis.cache.RedisCache",
+                "LOCATION": REDIS_URL,
+                "OPTIONS": {
+                    "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                },
+                "TIMEOUT": 300,
+            }
         }
-    }
+    except ImportError:
+        print("Warning: REDIS_URL is provided but django_redis is not installed. Falling back to LocMemCache.")
+        CACHES = {
+            "default": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "formula_x_local_cache",
+                "TIMEOUT": 300,
+            }
+        }
 else:
     CACHES = {
         "default": {
@@ -157,11 +190,10 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": (
-            "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        ),
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
+WHITENOISE_MANIFEST_STRICT = False
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/

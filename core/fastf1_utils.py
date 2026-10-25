@@ -1,12 +1,16 @@
 import fastf1 as ff1
+from fastf1.ergast import Ergast
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
+import os
+
 # Enable the cache
 try:
+    os.makedirs('fastf1_cache', exist_ok=True)
     ff1.Cache.enable_cache('fastf1_cache')
     print("FastF1 cache enabled.")
 except Exception as e:
@@ -35,6 +39,24 @@ def _clean_json_value(val):
     if isinstance(val, dict):
         return {k: _clean_json_value(v) for k, v in val.items()}
     return val
+
+
+def _safe_int(val, default=0):
+    try:
+        if val is None or pd.isna(val):
+            return default
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_float(val, default=0.0):
+    try:
+        if val is None or pd.isna(val):
+            return default
+        return float(val)
+    except (ValueError, TypeError):
+        return default
 
 
 def _clean_dataframe(df):
@@ -121,8 +143,27 @@ def get_race_schedule(year):
 def get_all_drivers_for_year(year):
     """
     Fetches the competing drivers for the specified year.
+    Uses Ergast for fast sub-second driver roster retrieval,
+    with fallback to opening race session.
     """
     try:
+        ergast = Ergast()
+        try:
+            d_info = ergast.get_driver_info(season=int(year))
+            if d_info is not None and not d_info.empty:
+                drivers = []
+                for _, row in d_info.iterrows():
+                    code = str(row.get('driverCode', ''))[:3].upper()
+                    if not code or code == 'NAN':
+                        code = str(row.get('driverId', ''))[:3].upper()
+                    b_name = f"{row.get('givenName', '')} {row.get('familyName', '')}".strip()
+                    drivers.append({'Abbreviation': code, 'BroadcastName': b_name})
+                if drivers:
+                    return sorted(drivers, key=lambda x: x['BroadcastName'])
+        except Exception as e:
+            print(f"Ergast driver info unavailable for {year}: {e}")
+
+        # Fallback to session load
         schedule = ff1.get_event_schedule(int(year))
         official_rounds = schedule[schedule['RoundNumber'] >= 1]
         if official_rounds.empty:
@@ -148,23 +189,26 @@ def get_season_overview(year=None):
     - Driver Standings (Position, Abbreviation, BroadcastName, TeamName, Points, Wins)
     - Constructor Standings (Position, TeamName, Points, Wins)
     - Leader Driver & Constructor
-    - Latest completed race summary (winner, podium, fastest lap)
+    - Latest completed race summary (winner, podium)
     - Next scheduled race information
     - Round-by-round cumulative championship progression for Drivers and Constructors
     """
     try:
         target_year = int(year) if year else datetime.now().year
+        ergast = Ergast()
+
+        # 1. Fetch Event Schedule
         schedule = ff1.get_event_schedule(target_year)
         official_rounds = schedule[schedule['RoundNumber'] >= 1].copy()
         today = pd.to_datetime('today')
 
-        completed_races = official_rounds[pd.to_datetime(official_rounds['EventDate']) < today].sort_values('RoundNumber')
-        upcoming_races = official_rounds[pd.to_datetime(official_rounds['EventDate']) >= today].sort_values('RoundNumber')
+        completed_schedule = official_rounds[pd.to_datetime(official_rounds['EventDate']) < today].sort_values('RoundNumber')
+        upcoming_schedule = official_rounds[pd.to_datetime(official_rounds['EventDate']) >= today].sort_values('RoundNumber')
 
         # Next scheduled race info
         next_race = None
-        if not upcoming_races.empty:
-            next_ev = upcoming_races.iloc[0]
+        if not upcoming_schedule.empty:
+            next_ev = upcoming_schedule.iloc[0]
             sessions = []
             session_dates = {}
             for i in range(1, 6):
@@ -185,7 +229,47 @@ def get_season_overview(year=None):
                 'SessionDates': session_dates
             }
 
-        if completed_races.empty:
+        # 2. Driver Standings via Ergast
+        driver_standings = []
+        try:
+            ds = ergast.get_driver_standings(season=target_year)
+            if ds and ds.content and not ds.content[0].empty:
+                for _, row in ds.content[0].iterrows():
+                    c_names = row.get('constructorNames', [])
+                    team_name = c_names[0] if isinstance(c_names, (list, tuple)) and c_names else str(c_names or '')
+                    b_name = f"{row.get('givenName', '')} {row.get('familyName', '')}".strip()
+                    code = str(row.get('driverCode', ''))[:3].upper()
+                    if not code or code == 'NAN':
+                        code = str(row.get('driverId', ''))[:3].upper()
+
+                    driver_standings.append({
+                        'Position': _safe_int(row.get('position'), 0),
+                        'Abbreviation': code,
+                        'BroadcastName': b_name,
+                        'TeamName': team_name,
+                        'Points': _safe_float(row.get('points'), 0.0),
+                        'Wins': _safe_int(row.get('wins'), 0)
+                    })
+        except Exception as e:
+            print(f"Ergast driver standings error for {target_year}: {e}")
+
+        # 3. Constructor Standings via Ergast
+        constructor_standings = []
+        try:
+            cs = ergast.get_constructor_standings(season=target_year)
+            if cs and cs.content and not cs.content[0].empty:
+                for _, row in cs.content[0].iterrows():
+                    constructor_standings.append({
+                        'Position': _safe_int(row.get('position'), 0),
+                        'TeamName': str(row.get('constructorName', '')),
+                        'Points': _safe_float(row.get('points'), 0.0),
+                        'Wins': _safe_int(row.get('wins'), 0)
+                    })
+        except Exception as e:
+            print(f"Ergast constructor standings error for {target_year}: {e}")
+
+        # If no standings and no completed races scheduled
+        if not driver_standings and completed_schedule.empty:
             return {
                 'has_completed_races': False,
                 'year': target_year,
@@ -195,179 +279,201 @@ def get_season_overview(year=None):
                 'constructor_leader': None,
                 'latest_race': None,
                 'next_race': next_race,
-                'progression': {'rounds': [], 'drivers': {}, 'constructors': {}},
+                'progression': {'rounds': [], 'events': [], 'drivers': {}, 'constructors': {}},
                 'race_name': f"No completed races in {target_year}"
             }
 
-        # Multi-threaded retrieval of completed race sessions
-        race_list = []
-        for _, r in completed_races.iterrows():
-            race_list.append({
-                'name': r['EventName'],
-                'round': int(r['RoundNumber']),
-                'country': r.get('Country', ''),
-                'date': str(r['EventDate']).split(' ')[0]
-            })
+        # 4. Latest Completed Race Summary via Ergast
+        latest_race_summary = None
+        race_name = f"Formula 1 {target_year}"
+        try:
+            lr = ergast.get_race_results(season=target_year, round='last')
+            if lr and lr.content and not lr.content[0].empty:
+                lr_df = lr.content[0]
+                desc = lr.description.iloc[0] if hasattr(lr, 'description') and not lr.description.empty else {}
+                p1_df = lr_df[lr_df['position'] == 1]
+                winner_row = p1_df.iloc[0] if not p1_df.empty else lr_df.iloc[0]
+                podium = []
+                for _, p_row in lr_df[lr_df['position'] <= 3].sort_values('position').iterrows():
+                    code = str(p_row.get('driverCode', ''))[:3].upper()
+                    if not code or code == 'NAN':
+                        code = str(p_row.get('driverId', ''))[:3].upper()
+                    podium.append({
+                        'Position': _safe_int(p_row.get('position'), 0),
+                        'BroadcastName': f"{p_row.get('givenName', '')} {p_row.get('familyName', '')}".strip(),
+                        'Abbreviation': code,
+                        'TeamName': str(p_row.get('constructorName', '')),
+                        'Status': str(p_row.get('status', 'Finished'))
+                    })
 
-        all_race_results = {}
-        with ThreadPoolExecutor(max_workers=min(6, len(race_list))) as executor:
-            future_to_race = {
-                executor.submit(_fetch_race_results, target_year, r['name'], 'R'): r
-                for r in race_list
-            }
-            for future in as_completed(future_to_race):
-                r_info = future_to_race[future]
-                try:
-                    res = future.result()
-                    if res is not None and not res.empty:
-                        all_race_results[r_info['round']] = {
-                            'info': r_info,
-                            'results': res
-                        }
-                except Exception as e:
-                    print(f"Could not load race results for {r_info['name']}: {e}")
+                w_code = str(winner_row.get('driverCode', ''))[:3].upper()
+                if not w_code or w_code == 'NAN':
+                    w_code = str(winner_row.get('driverId', ''))[:3].upper()
 
-        if not all_race_results:
-            return None
-
-        # Sort chronologically by round number
-        sorted_rounds = sorted(all_race_results.keys())
-
-        # Track cumulative points round by round
-        driver_round_points = {}  # abbr -> {round: points}
-        driver_metadata = {}      # abbr -> {BroadcastName, TeamName}
-        constructor_round_points = {} # team -> {round: points}
-        driver_wins = {}          # abbr -> count
-        constructor_wins = {}     # team -> count
-
-        latest_round_data = all_race_results[sorted_rounds[-1]]
-
-        for rnd in sorted_rounds:
-            res_df = all_race_results[rnd]['results']
-
-            # Check winner
-            p1_driver = res_df[res_df['Position'] == 1]
-            if not p1_driver.empty:
-                winner_abbr = p1_driver.iloc[0]['Abbreviation']
-                winner_team = p1_driver.iloc[0]['TeamName']
-                driver_wins[winner_abbr] = driver_wins.get(winner_abbr, 0) + 1
-                constructor_wins[winner_team] = constructor_wins.get(winner_team, 0) + 1
-
-            for _, row in res_df.iterrows():
-                abbr = row['Abbreviation']
-                team = row['TeamName']
-                pts = float(row.get('Points', 0.0) or 0.0)
-
-                driver_metadata[abbr] = {
-                    'BroadcastName': row.get('BroadcastName', abbr),
-                    'TeamName': team
+                ev_name = str(desc.get('raceName', 'Latest Grand Prix'))
+                latest_race_summary = {
+                    'EventName': ev_name,
+                    'RoundNumber': _safe_int(desc.get('round'), 0),
+                    'Country': str(desc.get('country', '')),
+                    'EventDate': str(desc.get('raceDate', '')),
+                    'Winner': {
+                        'BroadcastName': f"{winner_row.get('givenName', '')} {winner_row.get('familyName', '')}".strip(),
+                        'Abbreviation': w_code,
+                        'TeamName': str(winner_row.get('constructorName', ''))
+                    },
+                    'Podium': podium
                 }
+                race_name = f"{ev_name} {target_year}"
+        except Exception as e:
+            print(f"Ergast latest race error for {target_year}: {e}")
 
-                if abbr not in driver_round_points:
-                    driver_round_points[abbr] = {}
-                driver_round_points[abbr][rnd] = pts
-
-                if team not in constructor_round_points:
-                    constructor_round_points[team] = {}
-                constructor_round_points[team][rnd] = constructor_round_points[team].get(rnd, 0.0) + pts
-
-        # Compute Driver Standings
-        driver_rows = []
-        for abbr, meta in driver_metadata.items():
-            total_pts = sum(driver_round_points.get(abbr, {}).values())
-            wins = driver_wins.get(abbr, 0)
-            driver_rows.append({
-                'Abbreviation': abbr,
-                'BroadcastName': meta['BroadcastName'],
-                'TeamName': meta['TeamName'],
-                'Points': total_pts,
-                'Wins': wins
-            })
-
-        driver_standings_df = pd.DataFrame(driver_rows).sort_values(by=['Points', 'Wins'], ascending=[False, False])
-        driver_standings_df['Position'] = range(1, len(driver_standings_df) + 1)
-        driver_standings = driver_standings_df.to_dict(orient='records')
-
-        # Compute Constructor Standings
-        constructor_rows = []
-        for team in constructor_round_points.keys():
-            total_pts = sum(constructor_round_points[team].values())
-            wins = constructor_wins.get(team, 0)
-            constructor_rows.append({
-                'TeamName': team,
-                'Points': total_pts,
-                'Wins': wins
-            })
-
-        constructor_standings_df = pd.DataFrame(constructor_rows).sort_values(by=['Points', 'Wins'], ascending=[False, False])
-        constructor_standings_df['Position'] = range(1, len(constructor_standings_df) + 1)
-        constructor_standings = constructor_standings_df.to_dict(orient='records')
-
-        # Build round-by-round cumulative progression
-        prog_round_labels = [f"R{rnd}" for rnd in sorted_rounds]
-        prog_round_events = [all_race_results[rnd]['info']['name'] for rnd in sorted_rounds]
-
+        # 5. Round-by-round Progression via Paginated Ergast Results
+        prog_round_labels = []
+        prog_round_events = []
         prog_drivers = {}
-        for row in driver_standings:
-            abbr = row['Abbreviation']
-            cum = 0.0
-            cum_list = []
-            for rnd in sorted_rounds:
-                cum += driver_round_points.get(abbr, {}).get(rnd, 0.0)
-                cum_list.append(round(cum, 1))
-            prog_drivers[abbr] = {
-                'name': row['BroadcastName'],
-                'team': row['TeamName'],
-                'points': cum_list
-            }
-
         prog_constructors = {}
-        for row in constructor_standings:
-            team = row['TeamName']
-            cum = 0.0
-            cum_list = []
-            for rnd in sorted_rounds:
-                cum += constructor_round_points.get(team, {}).get(rnd, 0.0)
-                cum_list.append(round(cum, 1))
-            prog_constructors[team] = {
-                'name': team,
-                'points': cum_list
-            }
 
-        # Latest completed race details
-        lr_info = latest_round_data['info']
-        lr_results = latest_round_data['results']
-        lr_winner = lr_results[lr_results['Position'] == 1]
-        winner_dict = {}
-        if not lr_winner.empty:
-            w_row = lr_winner.iloc[0]
-            winner_dict = {
-                'BroadcastName': w_row.get('BroadcastName', ''),
-                'Abbreviation': w_row.get('Abbreviation', ''),
-                'TeamName': w_row.get('TeamName', '')
-            }
+        try:
+            all_round_dfs = []
+            all_round_descs = []
+            offset = 0
+            while True:
+                r_res = ergast.get_race_results(season=target_year, limit=100, offset=offset)
+                if not r_res.content or len(r_res.content) == 0:
+                    break
+                all_round_dfs.extend(r_res.content)
+                if hasattr(r_res, 'description') and not r_res.description.empty:
+                    all_round_descs.extend(r_res.description.to_dict(orient='records'))
+                if len(r_res.content) < 5:
+                    break
+                offset += 100
 
-        podium = []
-        for _, p_row in lr_results[lr_results['Position'] <= 3].sort_values('Position').iterrows():
-            podium.append({
-                'Position': int(p_row['Position']),
-                'BroadcastName': p_row.get('BroadcastName', ''),
-                'Abbreviation': p_row.get('Abbreviation', ''),
-                'TeamName': p_row.get('TeamName', ''),
-                'Status': p_row.get('Status', 'Finished')
-            })
+            if all_round_dfs:
+                driver_round_points = {}
+                constructor_round_points = {}
+                sorted_round_nums = list(range(1, len(all_round_dfs) + 1))
 
-        latest_race_summary = {
-            'EventName': lr_info['name'],
-            'RoundNumber': lr_info['round'],
-            'Country': lr_info['country'],
-            'EventDate': lr_info['date'],
-            'Winner': winner_dict,
-            'Podium': podium
-        }
+                for rnd_idx, res_df in enumerate(all_round_dfs):
+                    rnd = rnd_idx + 1
+                    r_desc = all_round_descs[rnd_idx] if rnd_idx < len(all_round_descs) else {}
+                    prog_round_labels.append(f"R{rnd}")
+                    prog_round_events.append(str(r_desc.get('raceName', f'Round {rnd}')))
+
+                    for _, row in res_df.iterrows():
+                        code = str(row.get('driverCode', ''))[:3].upper()
+                        if not code or code == 'NAN':
+                            code = str(row.get('driverId', ''))[:3].upper()
+                        team = str(row.get('constructorName', ''))
+                        pts = float(row.get('points', 0.0) or 0.0)
+
+                        if code not in driver_round_points:
+                            driver_round_points[code] = {}
+                        driver_round_points[code][rnd] = pts
+
+                        if team not in constructor_round_points:
+                            constructor_round_points[team] = {}
+                        constructor_round_points[team][rnd] = constructor_round_points[team].get(rnd, 0.0) + pts
+
+                # Cumulative progression per driver
+                for d in driver_standings:
+                    code = d['Abbreviation']
+                    cum = 0.0
+                    cum_list = []
+                    for rnd in sorted_round_nums:
+                        cum += driver_round_points.get(code, {}).get(rnd, 0.0)
+                        cum_list.append(round(cum, 1))
+                    prog_drivers[code] = {
+                        'name': d['BroadcastName'],
+                        'team': d['TeamName'],
+                        'points': cum_list
+                    }
+
+                # Cumulative progression per constructor
+                for c in constructor_standings:
+                    team = c['TeamName']
+                    cum = 0.0
+                    cum_list = []
+                    for rnd in sorted_round_nums:
+                        cum += constructor_round_points.get(team, {}).get(rnd, 0.0)
+                        cum_list.append(round(cum, 1))
+                    prog_constructors[team] = {
+                        'name': team,
+                        'points': cum_list
+                    }
+        except Exception as e:
+            print(f"Error building progression for {target_year}: {e}")
+
+        # Fallback to session load if driver_standings is still empty
+        if not driver_standings and not completed_schedule.empty:
+            try:
+                race_list = []
+                for _, r in completed_schedule.iterrows():
+                    race_list.append({
+                        'name': r['EventName'],
+                        'round': int(r['RoundNumber']),
+                        'country': r.get('Country', ''),
+                        'date': str(r['EventDate']).split(' ')[0]
+                    })
+                all_race_results = {}
+                with ThreadPoolExecutor(max_workers=min(4, len(race_list))) as executor:
+                    future_to_race = {
+                        executor.submit(_fetch_race_results, target_year, r['name'], 'R'): r
+                        for r in race_list
+                    }
+                    for future in as_completed(future_to_race):
+                        r_info = future_to_race[future]
+                        try:
+                            res = future.result()
+                            if res is not None and not res.empty:
+                                all_race_results[r_info['round']] = {'info': r_info, 'results': res}
+                        except Exception:
+                            pass
+                if all_race_results:
+                    # build driver_standings from all_race_results
+                    sorted_rounds = sorted(all_race_results.keys())
+                    driver_totals = {}
+                    driver_meta = {}
+                    driver_wins = {}
+                    constructor_totals = {}
+                    for rnd in sorted_rounds:
+                        res_df = all_race_results[rnd]['results']
+                        p1 = res_df[res_df['Position'] == 1]
+                        if not p1.empty:
+                            w_abbr = p1.iloc[0]['Abbreviation']
+                            driver_wins[w_abbr] = driver_wins.get(w_abbr, 0) + 1
+                        for _, row in res_df.iterrows():
+                            abbr = row['Abbreviation']
+                            team = row['TeamName']
+                            pts = float(row.get('Points', 0.0) or 0.0)
+                            driver_totals[abbr] = driver_totals.get(abbr, 0.0) + pts
+                            driver_meta[abbr] = {'BroadcastName': row.get('BroadcastName', abbr), 'TeamName': team}
+                            constructor_totals[team] = constructor_totals.get(team, 0.0) + pts
+                    driver_rows = []
+                    for abbr, meta in driver_meta.items():
+                        driver_rows.append({
+                            'Abbreviation': abbr,
+                            'BroadcastName': meta['BroadcastName'],
+                            'TeamName': meta['TeamName'],
+                            'Points': driver_totals.get(abbr, 0.0),
+                            'Wins': driver_wins.get(abbr, 0)
+                        })
+                    driver_standings_df = pd.DataFrame(driver_rows).sort_values(by=['Points', 'Wins'], ascending=[False, False])
+                    driver_standings_df['Position'] = range(1, len(driver_standings_df) + 1)
+                    driver_standings = driver_standings_df.to_dict(orient='records')
+
+                    constructor_rows = []
+                    for team, pts in constructor_totals.items():
+                        constructor_rows.append({'TeamName': team, 'Points': pts, 'Wins': 0})
+                    constructor_standings_df = pd.DataFrame(constructor_rows).sort_values(by='Points', ascending=False)
+                    constructor_standings_df['Position'] = range(1, len(constructor_standings_df) + 1)
+                    constructor_standings = constructor_standings_df.to_dict(orient='records')
+            except Exception as e:
+                print(f"Fallback session load error for {target_year}: {e}")
+
+        has_completed = bool(driver_standings or latest_race_summary)
 
         return {
-            'has_completed_races': True,
+            'has_completed_races': has_completed,
             'year': target_year,
             'driver_standings': driver_standings,
             'constructor_standings': constructor_standings,
@@ -381,7 +487,7 @@ def get_season_overview(year=None):
                 'drivers': prog_drivers,
                 'constructors': prog_constructors
             },
-            'race_name': f"{lr_info['name']} {target_year}"
+            'race_name': race_name
         }
     except Exception as e:
         print(f"Error computing season overview for year {year}: {e}")

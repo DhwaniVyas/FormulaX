@@ -45,13 +45,21 @@ def _get_cached_response(cache_key, loader, max_age_seconds, max_age_timedelta, 
             continue
 
     # 3. Cache miss: execute loader
-    data = loader()
+    try:
+        data = loader()
+    except Exception as e:
+        print(f"Error in loader for key {safe_key}: {e}")
+        data = None
+
     if data is not None:
         try:
             DataCache.objects.update_or_create(cache_key=safe_key, defaults={'json_data': data})
         except Exception as e:
             print(f"Error persisting to DataCache table for key {safe_key}: {e}")
-        cache.set(safe_key, data, timeout=max_age_seconds)
+        try:
+            cache.set(safe_key, data, timeout=max_age_seconds)
+        except Exception as e:
+            print(f"Error setting memory cache for key {safe_key}: {e}")
     return data
 
 
@@ -68,13 +76,17 @@ def home_view(request):
     except ValueError:
         selected_year = default_year
 
-    overview_data = _get_cached_response(
-        f"season_overview_{selected_year}",
-        lambda: fastf1_utils.get_season_overview(selected_year),
-        max_age_seconds=60 * 60 * 24,
-        max_age_timedelta=timedelta(days=1),
-        fallback_keys=[f"leaderboards_{selected_year}"]
-    )
+    try:
+        overview_data = _get_cached_response(
+            f"season_overview_{selected_year}",
+            lambda: fastf1_utils.get_season_overview(selected_year),
+            max_age_seconds=60 * 60 * 24,
+            max_age_timedelta=timedelta(days=1),
+            fallback_keys=[f"leaderboards_{selected_year}"]
+        )
+    except Exception as e:
+        print(f"Error retrieving season overview for {selected_year}: {e}")
+        overview_data = None
 
     context = {
         'years': years,
@@ -206,7 +218,7 @@ def api_get_schedule(request, year):
         max_age_seconds=60 * 60 * 24,
         max_age_timedelta=timedelta(days=1)
     )
-    return JsonResponse(schedule_data, safe=False)
+    return JsonResponse(schedule_data or [], safe=False)
 
 
 def api_get_drivers(request, year):
@@ -216,7 +228,7 @@ def api_get_drivers(request, year):
         max_age_seconds=60 * 60 * 24,
         max_age_timedelta=timedelta(days=1)
     )
-    return JsonResponse(driver_data, safe=False)
+    return JsonResponse(driver_data or [], safe=False)
 
 
 def api_get_sessions(request, year, gp):
@@ -377,4 +389,4 @@ def api_season_calendar(request, year):
     )
     if data:
         return JsonResponse(data, safe=False)
-    return JsonResponse({'error': f'Calendar details for {year} unavailable.'}, status=404)
+    return JsonResponse([], safe=False)

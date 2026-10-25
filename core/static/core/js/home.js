@@ -8,16 +8,20 @@ let activeProgressionView = 'drivers'; // 'drivers' or 'constructors'
 
 const F1_TEAM_COLORS = {
     "Red Bull Racing": "#0600EF",
+    "Red Bull": "#0600EF",
     "Mercedes": "#00D2BE",
     "Ferrari": "#DC0000",
     "McLaren": "#FF8700",
     "Aston Martin": "#006F62",
     "Alpine": "#0090FF",
+    "Alpine F1 Team": "#0090FF",
     "Williams": "#005AFF",
     "AlphaTauri": "#2B4562",
     "Haas F1 Team": "#FFFFFF",
+    "Haas": "#FFFFFF",
     "Alfa Romeo": "#900000",
     "RB": "#6692FF",
+    "RB F1 Team": "#6692FF",
     "Racing Bulls": "#6692FF",
     "Kick Sauber": "#52E252",
     "Sauber": "#52E252",
@@ -29,10 +33,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Colorize existing team color dots
     colorizeTeamDots();
 
-    // 2. Initialize with injected server-side context if available
-    if (typeof INITIAL_OVERVIEW !== 'undefined' && INITIAL_OVERVIEW) {
-        currentOverview = INITIAL_OVERVIEW;
+    // 2. Safely read injected server-side context from json_script
+    let initialOverview = null;
+    const initialOverviewEl = document.getElementById('initial-overview-data');
+    if (initialOverviewEl && initialOverviewEl.textContent.trim()) {
+        try {
+            initialOverview = JSON.parse(initialOverviewEl.textContent);
+        } catch (err) {
+            console.warn('Could not parse initial overview JSON:', err);
+        }
+    }
+
+    if (initialOverview && initialOverview.driver_standings && initialOverview.driver_standings.length > 0) {
+        currentOverview = initialOverview;
         renderProgressionChart();
+    } else {
+        // If initial overview is missing or cold, fetch asynchronously
+        const seasonSelect = document.getElementById('home-season-select');
+        const targetYear = (typeof SELECTED_YEAR !== 'undefined' && SELECTED_YEAR) ? SELECTED_YEAR : (seasonSelect ? seasonSelect.value : 2024);
+        fetchSeasonOverview(targetYear);
     }
 
     // 3. Set up Season Selector event listener
